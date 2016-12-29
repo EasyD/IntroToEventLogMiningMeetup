@@ -25,7 +25,6 @@
 #install.packages("lubridate")
 #install.packages("dplyr")
 #install.packages("ggplot2")
-#install.packages("qcc")
 
 
 # Load packages
@@ -33,7 +32,6 @@ library(edeaR)
 library(lubridate)
 library(dplyr)
 library(ggplot2)
-library(qcc)
 
 
 #
