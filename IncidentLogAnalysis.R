@@ -83,6 +83,9 @@ incident.data <- incident.data %>%
   arrange(Incident.ID, DateStamp)
 
 
+# Check the data
+head(incident.data, 10)
+
 
 #=======================================================================================
 #
@@ -92,12 +95,12 @@ incident.data <- incident.data %>%
 
 
 incidents.log <- eventlog(eventlog = incident.data,
-                         case_id = "Interaction.ID",
-                         activity_id = "IncidentActivity_Type",
-                         activity_instance_id = "IncidentActivity_Number",
-                         lifecycle_id = "Lifecycle",
-                         resource_id = "Assignment.Group",
-                         timestamp = "DateStamp")
+                          case_id = "Incident.ID",
+                          activity_id = "IncidentActivity_Type",
+                          activity_instance_id = "IncidentActivity_Number",
+                          lifecycle_id = "Lifecycle",
+                          resource_id = "Assignment.Group",
+                          timestamp = "DateStamp")
 
 
 
@@ -115,7 +118,7 @@ incidents.log %>% summary
 
 # What about case counts over time?
 case.counts <- incidents.log %>%
-  distinct(Month.Year, Interaction.ID) %>%
+  distinct(Month.Year, Incident.ID) %>%
   group_by(Month.Year) %>%
   summarize(Case.Count = n()) %>%
   arrange(Month.Year)
@@ -145,8 +148,8 @@ ggplot(activity.counts, aes(x = Month.Year, y = Activity.Count)) +
 throughput.times <- throughput_time(incidents.log, "case") 
 
 throughput.averages <- incidents.log %>%
-  distinct(Month.Year, Interaction.ID) %>%
-  left_join(throughput.times, by = "Interaction.ID") %>%
+  distinct(Month.Year, Incident.ID) %>%
+  left_join(throughput.times, by = "Incident.ID") %>%
   group_by(Month.Year) %>%
   summarize(Throughput.Avg = mean(throughput_time)) %>%
   arrange(Month.Year)
@@ -160,102 +163,94 @@ ggplot(throughput.averages, aes(x = Month.Year, y = Throughput.Avg)) +
 head(throughput.averages, nrow(throughput.averages))
 
 
-# Susbet data for the incidents earlier than October 2013
-incidents.early <- incidents.log %>%
-  filter(Month.Year < '2013-10-01') %>%
-  distinct(Interaction.ID)
+# Let's take a closer look
+table(incidents.log$Month.Year)
 
-# NOTE - You have to use edeaR functions on eventlog objects!
-incidents.early <- incidents.log %>%
-  filter_case(cases = incidents.early$Interaction.ID)
 
 # Susbet data for the incidents starting in October 2013 and later
 incidents.late <- incidents.log %>%
-  filter(Month.Year >= '2013-10-01') %>%
-  distinct(Interaction.ID)
+  filter(Month.Year >= ymd("2013-10-01 UTC")) %>%
+  distinct(Incident.ID)
 
 # NOTE - You have to use edeaR functions on eventlog objects!
 incidents.late <- incidents.log %>%
-  filter_case(cases = incidents.late$Interaction.ID)
+  filter_case(cases = incidents.late$Incident.ID)
 
 
-# Whoa! We have a problem
-nrow(incidents.early) + nrow(incidents.late)
-
-bad.ID <- intersect(incidents.early$Interaction.ID, incidents.late$Interaction.ID)
-
-bad.obs <- incidents.log %>%
-  filter(Interaction.ID == bad.ID) %>%
-  arrange(Interaction.ID, DateStamp)
+# Check again
+table(incidents.late$Month.Year)
 
 
-# Remove bad observations
-incidents.early <- incidents.early %>%
-  filter_case(case = bad.ID, reverse = TRUE)
+# OK, what's the case throughput distribution?
+throughput.times <- throughput_time(incidents.late, "case")
+summary(throughput.times$throughput_time)
+quantile(throughput.times$throughput_time, probs = seq(0.1, 1, 0.1))
 
-incidents.late <- incidents.late %>%
-  filter_case(case = bad.ID, reverse = TRUE)
+
+# Split on 9.287 days!
+incidents.late.short <- filter_throughput_time(incidents.late, upper_threshold = 9.287)
+incidents.late.long <- filter_throughput_time(incidents.late, lower_threshold = 9.2871)
 
 
 # Diplay summary stats for the groups via utility function
-display.stats <- function(header, early.value, late.value) {
+display.stats <- function(header, short.value, long.value) {
   cat(paste("\n", header, " for each group:",
-            "\n     Early:  ", early.value, 
-            "\n     Late:   ", late.value, 
+            "\n     Short:  ", short.value, 
+            "\n     Long:   ", long.value, 
             sep = "")) 
 }
 
-display.stats("# of cases", n_cases(incidents.early), 
-                            n_cases(incidents.late))
+display.stats("# of cases", n_cases(incidents.late.short), 
+                            n_cases(incidents.late.long))
 
 display.stats("Avg # of activities per case", 
-              mean(trace_length(incidents.early, "case")$trace_length), 
-              mean(trace_length(incidents.late, "case")$trace_length))
+              mean(trace_length(incidents.late.short, "case")$trace_length), 
+              mean(trace_length(incidents.late.long, "case")$trace_length))
 
-display.stats("# of traces", n_traces(incidents.early), 
-                             n_traces(incidents.late))
+display.stats("# of traces", n_traces(incidents.late.short), 
+                             n_traces(incidents.late.long))
 
 
 # First question we have for the data - what activities are most frequent?
-early.activity.freq <- incidents.early %>%
+early.activity.freq <- incidents.late.short %>%
   activity_frequency("activity") %>%
   arrange(desc(absolute))
 head(early.activity.freq, 10)
 
-late.activity.freq <- incidents.late %>%
+late.activity.freq <- incidents.late.long %>%
   activity_frequency("activity") %>%
   arrange(desc(absolute))
 head(late.activity.freq, 10)
 
 
 # Start building intuition regarding structure of cases
-early.activity.presence <- incidents.early %>%
+early.activity.presence <- incidents.late.short %>%
   activity_presence()
 head(early.activity.presence, 10)
 
-late.activity.presence <- incidents.late %>%
+late.activity.presence <- incidents.late.long %>%
   activity_presence()
 head(late.activity.presence, 10)
 
 
 # Compare the resources between each group
-early.resources <- incidents.early %>%
+short.resources <- incidents.late.short %>%
   resource_involvement("resource") %>%
   arrange(desc(absolute))
 
-late.resources <- incidents.late %>%
+long.resources <- incidents.late.long %>%
   resource_involvement("resource") %>%
   arrange(desc(absolute))
 
 # Plot differences in top 10 resources
-early.resources$group <- "Early"
-late.resources$group <- "Late"
+short.resources$group <- "Short"
+long.resources$group <- "Long"
 
 cols <- c("group", "Assignment.Group", "absolute")
-resources.df <- rbind(early.resources[1:10, cols],
-                      late.resources[1:10, cols])
+resources.df <- rbind(short.resources[1:10, cols],
+                      long.resources[1:10, cols])
 resources.df$group <- factor(resources.df$group,
-                             levels = c("Early", "Late"))
+                             levels = c("Short", "Long"))
 
 ggplot(resources.df, aes(x = reorder(Assignment.Group, -absolute), y = absolute)) +
   theme_bw() +
@@ -268,15 +263,17 @@ ggplot(resources.df, aes(x = reorder(Assignment.Group, -absolute), y = absolute)
 
 
 # Compare the counts of self-loops in cases
-early.self.loops <- incidents.early %>%
+short.self.loops <- incidents.late.short %>%
   number_of_selfloops("repeat", "case") %>%
   arrange(desc(absolute))
-summary(early.self.loops$absolute)
+summary(short.self.loops$absolute)
 
-late.self.loops <- incidents.late %>%
+long.self.loops <- incidents.late.long %>%
   number_of_selfloops("repeat", "case") %>%
   arrange(desc(absolute))
-summary(late.self.loops$absolute)
+summary(long.self.loops$absolute)
+
+
 
 
 #=======================================================================================
@@ -286,14 +283,90 @@ summary(late.self.loops$absolute)
 #=======================================================================================
 
 
-# Filter logs to the activities that account for 80% of the total
-early.filtered <- incidents.early %>%
-  filter_activity_frequency(percentile_cut_off = 0.8)
+# Filter complet logs to the activities that account for 90% of the total
+short.filtered <- incidents.late.short %>%
+  filter_activity_frequency(percentile_cut_off = .90)
 
-late.filtered <- incidents.late %>%
-  filter_activity_frequency(percentile_cut_off = 0.8)
+long.filtered <- incidents.late.long %>%
+  filter_activity_frequency(percentile_cut_off = .90)
 
 
-# Write XES-files
-write_xes(early.filtered)
-write_xes(late.filtered)
+# OK, we know that some of the activities have the same DateStamp, fix cases
+# so that Open/Closed activities are always the earliest/latest
+
+# Utility functions
+adjust.open.closed <- function(row) {
+  activity <- row["IncidentActivity_Type"]
+  value <- row["DateStamp"]
+  
+  if (activity == "Open") {
+    value <- row["Min.DateStamp"]
+  } else if (activity == "Closed") {
+    value <- row["Max.DateStamp"]
+  }
+  
+  return(value)
+}
+
+fix.open.closed <- function(incidents) {
+  # Get data frame of min/max DateStamps by Incident.ID
+  min.max <- incidents %>%
+    group_by(Incident.ID) %>%
+    summarize(Min.DateStamp = min(DateStamp),         
+              Max.DateStamp = max(DateStamp))
+  
+  # Adjust min/max values to ensure earliest/latest
+  min.max$Min.DateStamp <- min.max$Min.DateStamp - minutes(1)
+  min.max$Max.DateStamp <- min.max$Max.DateStamp + minutes(1)
+
+  # Left outer join min/max values
+  incidents <- incidents %>%
+    left_join(min.max, by = "Incident.ID")
+  
+  # Use apply() vectorized processing
+  incidents$DateStamp <- apply(incidents, 1, adjust.open.closed)  
+  
+  return(incidents)
+}
+
+short.filtered <- fix.open.closed(short.filtered)
+long.filtered <- fix.open.closed(long.filtered)
+
+
+# Subset logs to the top 20 teams for social network analysis
+short.social <- short.filtered %>%
+  filter(Assignment.Group %in% short.resources$Assignment.Group[1:10])
+
+long.social <- long.filtered %>%
+  filter(Assignment.Group %in% long.resources$Assignment.Group[1:10])
+
+
+# Subset columns to minimum needed for import into ProM
+cols <- c("Incident.ID", "IncidentActivity_Type", "DateStamp", "Assignment.Group")
+
+short.filtered <- short.filtered[, cols]
+long.filtered <- long.filtered[, cols]
+
+short.social <- short.social[, cols]
+long.social <- long.social[, cols]
+
+
+# Rename Assignment.Group column for ease import into ProM
+res.name <- "org:resource"
+
+names(short.filtered)[4] <- res.name
+names(long.filtered)[4] <- res.name
+
+names(short.social)[4] <- res.name
+names(long.social)[4] <- res.name
+
+
+# Write complete event log CSV files for import into ProM
+write.csv(short.filtered, file = "ShortFiltered.csv", row.names = FALSE)
+write.csv(long.filtered, file = "LongFiltered.csv", row.names = FALSE)
+
+
+# Write susbet logs as CSV files for import into ProM
+write.csv(short.social, file = "ShortSocial.csv", row.names = FALSE)
+write.csv(long.social, file = "LongSocial.csv", row.names = FALSE)
+
