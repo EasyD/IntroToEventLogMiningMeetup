@@ -21,7 +21,7 @@
 
 
 # Install the following packages if needed.
-#install.packages("edeaR")
+#install.packages("edeaR", repos = "http://cran.us.r-project.org")
 #install.packages("lubridate")
 #install.packages("dplyr")
 #install.packages("ggplot2")
@@ -54,7 +54,7 @@ str(incident.data)
 
 
 # Convert date strings using lubridate.
-incident.data$DateStamp <- dmy_hms(incident.data$DateStamp)
+incident.data$DateStamp <- dmy_hms(incident.data$DateStamp, tz = "UTC")
 
 
 # Setup all the factors.
@@ -128,20 +128,6 @@ ggplot(case.counts, aes(x = Month.Year, y = Case.Count)) +
   geom_line(size = 0.75) +
   labs(x = "Month & Year", y = "Count of Cases",
        title = "Case Counts for Complete Log File")
-
-
-# What about activity counts over time?
-activity.counts <- incidents.log %>%
-  distinct(Month.Year, IncidentActivity_Number) %>%
-  group_by(Month.Year) %>%
-  summarize(Activity.Count = n()) %>%
-  arrange(Month.Year)
-
-ggplot(activity.counts, aes(x = Month.Year, y = Activity.Count)) +
-  theme_bw() +
-  geom_line(size = 0.75) +
-  labs(x = "Month & Year", y = "Count of Activities",
-       title = "Activity Counts for Complete Log File")
 
 
 # What about average case throughput over time?
@@ -233,47 +219,6 @@ late.activity.presence <- incidents.late.long %>%
 head(late.activity.presence, 10)
 
 
-# Compare the resources between each group
-short.resources <- incidents.late.short %>%
-  resource_involvement("resource") %>%
-  arrange(desc(absolute))
-
-long.resources <- incidents.late.long %>%
-  resource_involvement("resource") %>%
-  arrange(desc(absolute))
-
-# Plot differences in top 10 resources
-short.resources$group <- "Short"
-long.resources$group <- "Long"
-
-cols <- c("group", "Assignment.Group", "absolute")
-resources.df <- rbind(short.resources[1:10, cols],
-                      long.resources[1:10, cols])
-resources.df$group <- factor(resources.df$group,
-                             levels = c("Short", "Long"))
-
-ggplot(resources.df, aes(x = reorder(Assignment.Group, -absolute), y = absolute)) +
-  theme_bw() +
-  geom_bar(stat = "identity") +
-  facet_grid(~ group) + 
-  labs(x = "Resource/Team",
-       y = "Resource/Team Activity Count",
-       title = "Top 10 Resources/Teams by Throughput Grouping") +
-  theme(axis.text.x = element_text(angle = -90))
-
-
-# Compare the counts of self-loops in cases
-short.self.loops <- incidents.late.short %>%
-  number_of_selfloops("repeat", "case") %>%
-  arrange(desc(absolute))
-summary(short.self.loops$absolute)
-
-long.self.loops <- incidents.late.long %>%
-  number_of_selfloops("repeat", "case") %>%
-  arrange(desc(absolute))
-summary(long.self.loops$absolute)
-
-
 
 
 #=======================================================================================
@@ -333,14 +278,6 @@ short.filtered <- fix.open.closed(short.filtered)
 long.filtered <- fix.open.closed(long.filtered)
 
 
-# Subset logs to the top 20 teams for social network analysis
-short.social <- short.filtered %>%
-  filter(Assignment.Group %in% short.resources$Assignment.Group[1:10])
-
-long.social <- long.filtered %>%
-  filter(Assignment.Group %in% long.resources$Assignment.Group[1:10])
-
-
 # Subset columns to minimum needed for import into ProM
 cols <- c("Incident.ID", "IncidentActivity_Type", "DateStamp", "Assignment.Group")
 
@@ -357,16 +294,8 @@ res.name <- "org:resource"
 names(short.filtered)[4] <- res.name
 names(long.filtered)[4] <- res.name
 
-names(short.social)[4] <- res.name
-names(long.social)[4] <- res.name
-
 
 # Write complete event log CSV files for import into ProM
 write.csv(short.filtered, file = "ShortFiltered.csv", row.names = FALSE)
 write.csv(long.filtered, file = "LongFiltered.csv", row.names = FALSE)
-
-
-# Write susbet logs as CSV files for import into ProM
-write.csv(short.social, file = "ShortSocial.csv", row.names = FALSE)
-write.csv(long.social, file = "LongSocial.csv", row.names = FALSE)
 
