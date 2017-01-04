@@ -284,9 +284,6 @@ cols <- c("Incident.ID", "IncidentActivity_Type", "DateStamp", "Assignment.Group
 short.filtered <- short.filtered[, cols]
 long.filtered <- long.filtered[, cols]
 
-short.social <- short.social[, cols]
-long.social <- long.social[, cols]
-
 
 # Rename Assignment.Group column for ease import into ProM
 res.name <- "org:resource"
