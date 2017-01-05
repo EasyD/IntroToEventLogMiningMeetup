@@ -149,8 +149,8 @@ ggplot(throughput.averages, aes(x = Month.Year, y = Throughput.Avg)) +
 head(throughput.averages, nrow(throughput.averages))
 
 
-# Let's take a closer look
-table(incidents.log$Month.Year)
+# Let's take a closer look at the case counts over time
+case.counts
 
 
 # Susbet data for the incidents starting in October 2013 and later
@@ -163,8 +163,12 @@ incidents.late <- incidents.log %>%
   filter_case(cases = incidents.late$Incident.ID)
 
 
-# Check again
-table(incidents.late$Month.Year)
+# Check again to ensure we have the right counts for October and beyond.
+incidents.late %>%
+  distinct(Month.Year, Incident.ID) %>%
+  group_by(Month.Year) %>%
+  summarize(Case.Count = n()) %>%
+  arrange(Month.Year)
 
 
 # OK, what's the case throughput distribution?
